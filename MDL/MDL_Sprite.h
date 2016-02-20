@@ -1,0 +1,365 @@
+/*
+SP			THE SPRITE MODULE OF MDL
+RI				  2016@MoePus
+*/
+#pragma once
+#include <d3d11.h>
+#include <iostream>
+#include <unordered_map>
+#include <vector>
+#include <xnamath.h>
+#include <random>
+#include "MDL_Core.h"
+#include "MDL_Texture2D.h"
+#include "MDL_Sprite_FX.h"
+
+namespace MDL
+{
+	enum MDL_SPRITE_OVERLAPP_MODE
+	{
+		Ori_Alpha,
+		All_Alpha,
+		Add_Color,
+		Sub_Color
+	};
+	struct spriteAttr
+	{
+		XMFLOAT2 scale = { 1.0f,1.0f };
+		XMFLOAT2 position;
+		float rotation = 0.0f;
+		MDL_SPRITE_OVERLAPP_MODE OM = Ori_Alpha;
+	};
+	struct Rectf
+	{
+		float left;
+		float right;
+		float top;
+		float bottom;
+	};
+
+	class sprite
+	{
+	private:
+
+		DWORD textureHandle;
+		ID3D11Buffer* vertexBuffer;
+		ID3D11Buffer* mvpCB;
+		XMMATRIX vpMatrix;
+
+		XMFLOAT2 size;
+
+		spriteAttr attr;
+
+		sprite::sprite(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
+			ID3D11Buffer* _mvpCB, XMMATRIX _vpMatrix, XMFLOAT2 _size) :
+			textureHandle(_textureHandle), vertexBuffer(_vertexBuffer),
+			mvpCB(_mvpCB), vpMatrix(_vpMatrix), size(_size)
+		{
+		}
+	public:
+		friend class spriteHandler;
+		friend class spriteRender;
+		XMMATRIX GetWorldMatrix()
+		{
+			XMMATRIX _translation = XMMatrixTranslation(attr.position.x, attr.position.y, 0.0f);
+			XMMATRIX _rotationZ = XMMatrixRotationZ(attr.rotation);
+			XMMATRIX _scale = XMMatrixScaling(attr.scale.x, attr.scale.y, 1.0f);
+
+			return _rotationZ * _scale* _translation;
+		}
+	};
+
+	class spriteHandler
+	{
+	public:
+		static spriteHandler& getSingleton()
+		{
+			static spriteHandler singleton;
+			return singleton;
+		}
+		QWORD loadSprite(DWORD textureHandle, Rectf* cutter = nullptr);
+		QWORD loadSprite(DWORD textureHandle);
+		void unloadSprite(QWORD spriteHandle);
+
+
+	private:
+		std::unordered_map<QWORD, sprite> data;	//spritemap
+		std::mt19937 mt;
+	};
+
+	void MDL::spriteRender::init()
+	{
+		ID3DBlob* vsBuffer = 0;
+		string shaderName = "defaultSpriteFx";
+		bool compileResult = CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "VS_Main", "vs_4_0", &vsBuffer);
+		if (compileResult == false)
+		{
+			MDLERROR("Error compiling the vertex shader!");
+		}
+
+		HRESULT d3dResult;
+		auto mcore = core::getSingleton();
+		auto d3dDevice = mcore.getDevice();
+
+
+		d3dResult = d3dDevice->CreateVertexShader(vsBuffer->GetBufferPointer(),vsBuffer->GetBufferSize(), 0, &defaultVS);
+
+		if (FAILED(d3dResult))
+		{
+			if (vsBuffer)
+				vsBuffer->Release();
+			MDLERROR("Error creating the vertex shader!");
+		}
+
+		D3D11_INPUT_ELEMENT_DESC solidColorLayout[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		};
+
+		unsigned int totalLayoutElements = ARRAYSIZE(solidColorLayout);
+
+		d3dResult = d3dDevice->CreateInputLayout(solidColorLayout, totalLayoutElements,vsBuffer->GetBufferPointer(), vsBuffer->GetBufferSize(), &defaultInputLayout);
+
+		vsBuffer->Release();
+
+		if (FAILED(d3dResult))
+		{
+			MDLERROR("Error creating the input layout!");
+		}
+
+		ID3DBlob* psBuffer = 0;
+
+
+		compileResult = CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "PS_Main", "ps_4_0", &psBuffer);
+
+		if (compileResult == false)
+		{
+			MDLERROR("Error compiling pixel shader!");
+		}
+
+		d3dResult = d3dDevice->CreatePixelShader(psBuffer->GetBufferPointer(), psBuffer->GetBufferSize(), 0, &defaultPS);
+
+		psBuffer->Release();
+
+		if (FAILED(d3dResult))
+		{
+			MDLERROR("Error creating pixel shader!");
+		}
+
+		/*				Init Default BlendState for Sprite			 */
+		ID3D11BlendState* alphaBlendState_;
+		D3D11_BLEND_DESC blendDesc;
+		ZeroMemory(&blendDesc, sizeof(blendDesc));
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+
+		blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = 0xf;
+
+		const static float oBECL[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+		d3dDevice->CreateBlendState(&blendDesc, &alphaBlendState_);
+		mcore.getContext()->OMSetBlendState(alphaBlendState_, oBECL, 0xFFFFFFFF);
+		alphaBlendState_->Release();
+
+
+
+		/*				Init Default Sampler for Sprite				 */
+		D3D11_SAMPLER_DESC colorMapDesc;
+
+		ZeroMemory(&colorMapDesc, sizeof(colorMapDesc));
+		colorMapDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+		colorMapDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+		colorMapDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+		colorMapDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+		colorMapDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+		colorMapDesc.MaxLOD = D3D11_FLOAT32_MAX;
+
+		d3dResult = d3dDevice->CreateSamplerState(&colorMapDesc, &colorMapSampler);
+
+		if (FAILED(d3dResult))
+		{
+			MDLERROR("Failed to create color map sampler state!");
+		}
+
+
+		return;
+	}
+
+	QWORD MDL::spriteHandler::loadSprite(DWORD textureHandle, Rectf * cutter)
+	{
+		if (cutter == nullptr)
+			return ~0;
+
+		ID3D11Buffer* vertexBuffer_;
+		ID3D11Buffer* mvpCB_;
+		XMMATRIX vpMatrix_;
+		ID3D11Resource* colorTex;
+		auto mcore = core::getSingleton();
+		auto mt2dhan = texture2DHandler::getSingleton();
+
+		mt2dhan.getTextureColorMap(textureHandle)->GetResource(&colorTex);
+
+		D3D11_TEXTURE2D_DESC colorTexDesc;
+		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
+		colorTex->Release();
+
+		float halfWidth = (float)colorTexDesc.Width *(cutter->right - cutter->left) / (float)colorTexDesc.Width / 2.0f;
+		float halfHeight = (float)colorTexDesc.Height *(cutter->bottom - cutter->top) / (float)colorTexDesc.Height / 2.0f;
+		VertexPos vertices[] =
+		{
+			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
+			{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+			{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width,cutter->top / (float)colorTexDesc.Height) },
+			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
+		};
+		D3D11_BUFFER_DESC vertexDesc;
+		ZeroMemory(&vertexDesc, sizeof(vertexDesc));
+		vertexDesc.Usage = D3D11_USAGE_DEFAULT;
+		vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
+
+		D3D11_SUBRESOURCE_DATA resourceData;
+		ZeroMemory(&resourceData, sizeof(resourceData));
+		resourceData.pSysMem = vertices;
+
+		if (FAILED(mcore.getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+		{
+			MDLERROR("Failed to create vertex buffer!");
+			return false;
+		}
+
+		D3D11_BUFFER_DESC constDesc;
+		ZeroMemory(&constDesc, sizeof(constDesc));
+		constDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		constDesc.ByteWidth = sizeof(XMMATRIX);
+		constDesc.Usage = D3D11_USAGE_DEFAULT;
+
+
+		if (FAILED(mcore.getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		{
+			return false;
+		}
+
+
+		XMMATRIX view = XMMatrixIdentity();
+		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore.getWidth(), 0.0f, (float)mcore.getHeight(), 0.1f, 100.0f);
+		vpMatrix_ = XMMatrixMultiply(view, projection);
+
+
+		QWORD spriteHandle = static_cast<QWORD>(textureHandle) << 32 + mt();
+
+		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
+
+		return spriteHandle;
+	}
+
+	QWORD MDL::spriteHandler::loadSprite(DWORD textureHandle)
+	{
+
+		ID3D11Buffer* vertexBuffer_;
+		ID3D11Buffer* mvpCB_;
+		XMMATRIX vpMatrix_;
+		ID3D11Resource* colorTex;
+		auto mcore = core::getSingleton();
+		auto mt2dhan = texture2DHandler::getSingleton();
+
+		mt2dhan.getTextureColorMap(textureHandle)->GetResource(&colorTex);
+
+		D3D11_TEXTURE2D_DESC colorTexDesc;
+		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
+		colorTex->Release();
+
+
+		float halfWidth = (float)colorTexDesc.Width / 2.0f;
+		float halfHeight = (float)colorTexDesc.Height / 2.0f;
+
+
+		VertexPos vertices[] =
+		{
+			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
+			{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(1.0f, 1.0f) },
+			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
+			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
+			{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(0.0f, 0.0f) },
+			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
+		};
+		D3D11_BUFFER_DESC vertexDesc;
+		ZeroMemory(&vertexDesc, sizeof(vertexDesc));
+		vertexDesc.Usage = D3D11_USAGE_DEFAULT;
+		vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
+
+		D3D11_SUBRESOURCE_DATA resourceData;
+		ZeroMemory(&resourceData, sizeof(resourceData));
+		resourceData.pSysMem = vertices;
+
+
+		if (FAILED(mcore.getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+		{
+			MDLERROR("Failed to create vertex buffer!");
+			return false;
+		}
+
+		D3D11_BUFFER_DESC constDesc;
+		ZeroMemory(&constDesc, sizeof(constDesc));
+		constDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		constDesc.ByteWidth = sizeof(XMMATRIX);
+		constDesc.Usage = D3D11_USAGE_DEFAULT;
+
+
+		if (FAILED(mcore.getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		{
+			return false;
+		}
+
+
+		XMMATRIX view = XMMatrixIdentity();
+		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore.getWidth(), 0.0f, (float)mcore.getHeight(), 0.1f, 100.0f);
+		vpMatrix_ = XMMatrixMultiply(view, projection);
+
+
+		QWORD spriteHandle = static_cast<QWORD>(textureHandle) << 32 + mt();
+		
+		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
+
+		return spriteHandle;
+	}
+
+	void spriteHandler::unloadSprite(QWORD spriteHandle)
+	{
+		if (data[spriteHandle].vertexBuffer)
+			data[spriteHandle].vertexBuffer->Release();
+
+
+		if (data[spriteHandle].mvpCB)
+			data[spriteHandle].mvpCB->Release();
+
+		data.erase(spriteHandle);
+	}
+
+	class spriteRender
+	{
+	public:
+		static spriteRender& getSingleton()
+		{
+			static spriteRender singleton;
+			return singleton;
+		}
+		void init();
+	private:
+		ID3D11VertexShader*	defaultVS;
+		ID3D11PixelShader*	defaultPS;
+		ID3D11InputLayout*	defaultInputLayout;
+
+		ID3D11SamplerState* colorMapSampler;
+	};
+}
