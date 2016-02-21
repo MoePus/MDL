@@ -1,4 +1,4 @@
-#MDL
+ï»¿#MDL
 The mini draw library
 
 to draw with codes like AE
@@ -10,7 +10,7 @@ with dx11
 # 
 
 ##aim of 2016.2.20
-* Implement the sprite render list module ¡Ì
+* Implement the sprite render list module âˆš
 * Make less drawcall when drawing with the same colorMap
 * Implement the composition module
 * Implement the point drawer module

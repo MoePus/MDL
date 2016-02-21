@@ -21,6 +21,8 @@ RE					2016@MoePus
 
 namespace MDL
 {
+	DWORD SpecialFNVHash(const char *begin, const  char *end, DWORD initHash);
+
 	typedef unsigned long long	QWORD;
 	typedef unsigned long	DWORD;
 	typedef unsigned short	WORD;
@@ -53,6 +55,7 @@ namespace MDL
 		BOOL ShowMDLWindow(int nCmdShow);
 
 		HRESULT InitDevice(int fpsNum, int fpsDen = 1);
+		bool InitStpk(string idxName);
 		ID3D11Device* getDevice()
 		{
 			return d3dDevice;
@@ -72,8 +75,8 @@ namespace MDL
 		}
 
 		typedef STPK::stpkHandler::STPK_ret MDL_FILE;
-		MDL_FILE&& getFile(string fileName);
-		MDL_FILE&& getFile(DWORD fileNameHash);
+		MDL_FILE getFile(string fileName);
+		MDL_FILE getFile(DWORD fileNameHash);
 
 		int getWidth() { return width; }
 		int getHeight() { return height; }
@@ -223,20 +226,33 @@ namespace MDL
 
 		return S_OK;
 	}
+
+	bool core::InitStpk(string idxName)
+	{
+		char IDXPATH[MAX_PATH];
+		GetCurrentDirectory(MAX_PATH, IDXPATH);
+		string idxFullPath = IDXPATH + string("\\") + idxName;
+		auto mstpk = STPK::stpkHandler::getSingleton();
+		
+		return mstpk->init(idxFullPath);
+	}
+
 	void core::clearComposition()
 	{
 		float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; //red,green,blue,alpha
 		ImmediateContext->ClearRenderTargetView(RenderTargetView, ClearColor);
 	}
 
-	inline core::MDL_FILE && core::getFile(string fileName)
+	inline core::MDL_FILE core::getFile(string fileName)
 	{
-		return std::move(MDL_FILE());
+		DWORD hash = SpecialFNVHash(fileName.c_str(), fileName.c_str() + fileName.length(), NULL);
+		return getFile(hash);
 	}
 
-	inline core::MDL_FILE && core::getFile(DWORD fileNameHash)
+	inline core::MDL_FILE core::getFile(DWORD fileNameHash)
 	{
-		return std::move(MDL_FILE());
+		auto mstpk = STPK::stpkHandler::getSingleton();
+		return mstpk->STPK_read(fileNameHash);
 	}
 
 

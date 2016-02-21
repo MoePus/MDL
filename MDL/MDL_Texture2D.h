@@ -55,9 +55,10 @@ namespace MDL
 		auto mcore = core::getSingleton();
 
 
-		auto tbM = mcore.getFile(texture_handle);
-		d3dResult = D3DX11CreateShaderResourceViewFromMemory(mcore.getDevice(), tbM.mem.get(), tbM.SIZE, 0, 0, &colorMap_, 0);
+		auto tbM = mcore->getFile(texture_handle);
+		d3dResult = D3DX11CreateShaderResourceViewFromMemory(mcore->getDevice(), tbM.mem, tbM.SIZE, 0, 0, &colorMap_, 0);
 
+		free(tbM.mem);
 
 		if (FAILED(d3dResult))
 		{

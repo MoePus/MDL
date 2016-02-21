@@ -44,18 +44,29 @@ namespace MDL
 		DWORD textureHandle;
 		ID3D11Buffer* vertexBuffer;
 		ID3D11Buffer* mvpCB;
-		XMMATRIX vpMatrix;
+		XMMATRIX* vpMatrix;
 
 		XMFLOAT2 size;
 
 	public:
-		sprite::sprite() {};
-		sprite::sprite(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
-			ID3D11Buffer* _mvpCB, XMMATRIX* _vpMatrix, XMFLOAT2 _size) :
-			textureHandle(_textureHandle), vertexBuffer(_vertexBuffer),
-			mvpCB(_mvpCB), size(_size)
+		sprite::sprite()
 		{
-			memcpy(&vpMatrix, _vpMatrix, sizeof(XMMATRIX));
+			vpMatrix = (XMMATRIX*)_aligned_malloc(sizeof(XMMATRIX), 16);
+		};
+		void set(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
+			ID3D11Buffer* _mvpCB, XMMATRIX* _vpMatrix, XMFLOAT2 _size) 
+		{
+			textureHandle = _textureHandle;
+			vertexBuffer = _vertexBuffer;
+			mvpCB = _mvpCB;
+			size = _size;
+
+			memcpy(vpMatrix, _vpMatrix, sizeof(XMMATRIX));
+		}
+		sprite::~sprite()
+		{
+			if(vpMatrix!=nullptr)
+				_aligned_free(vpMatrix);
 		}
 		friend class spriteHandler;
 		friend class spriteRender;
@@ -79,14 +90,17 @@ namespace MDL
 			return singleton;
 		}
 		QWORD loadSprite(DWORD textureHandle, Rectf* cutter = nullptr);
-		QWORD loadSprite(DWORD textureHandle);
 		void unloadSprite(QWORD spriteHandle);
-
-
+		XMFLOAT2 getSpriteSize(QWORD spriteHandle);
 	private:
 		std::unordered_map<QWORD, sprite> data;	//spritemap
 		std::mt19937 mt;
 	};
+
+	XMFLOAT2 spriteHandler::getSpriteSize(QWORD spriteHandle)
+	{
+		return data[spriteHandle].size;
+	}
 
 	class spriteRender
 	{
@@ -96,7 +110,10 @@ namespace MDL
 			static spriteRender* singleton = new spriteRender;
 			return singleton;
 		}
-		void init();
+		spriteRender::spriteRender()
+		{
+			init();
+		}
 
 		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
 		spriteAttr& getspriteAttr(DWORD renderHandle);
@@ -111,6 +128,8 @@ namespace MDL
 		ID3D11SamplerState* colorMapSampler;
 
 		vector<pair<QWORD, spriteAttr>> data;
+
+		void init();
 	};
 
 	void spriteRender::init()
@@ -261,9 +280,8 @@ namespace MDL
 
 
 			XMMATRIX world = sprite::GetWorldMatrix(data[i].second);
-			XMMATRIX vpMatrix;
-			memcpy(&vpMatrix, &st->vpMatrix, sizeof(vpMatrix));
-			XMMATRIX mvp = XMMatrixMultiply(world, vpMatrix);
+
+			XMMATRIX mvp = XMMatrixMultiply(world, *(st->vpMatrix));
 			mvp = XMMatrixTranspose(mvp);
 
 			d3dContext->UpdateSubresource(st->mvpCB, 0, 0, &mvp, 0, 0);
@@ -283,143 +301,104 @@ namespace MDL
 
 	QWORD MDL::spriteHandler::loadSprite(DWORD textureHandle, Rectf * cutter)
 	{
+
+
+		ID3D11Buffer* vertexBuffer_;
+		ID3D11Buffer* mvpCB_;
+		XMMATRIX vpMatrix_;
+		ID3D11Resource* colorTex;
+		auto mcore = core::getSingleton();
+		auto mt2dhan = texture2DHandler::getSingleton();
+
+		mt2dhan->getTextureColorMap(textureHandle)->GetResource(&colorTex);
+
+		D3D11_TEXTURE2D_DESC colorTexDesc;
+		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
+		colorTex->Release();
 		if (cutter == nullptr)
-			return ~0;
-
-		ID3D11Buffer* vertexBuffer_;
-		ID3D11Buffer* mvpCB_;
-		XMMATRIX vpMatrix_;
-		ID3D11Resource* colorTex;
-		auto mcore = core::getSingleton();
-		auto mt2dhan = texture2DHandler::getSingleton();
-
-		mt2dhan->getTextureColorMap(textureHandle)->GetResource(&colorTex);
-
-		D3D11_TEXTURE2D_DESC colorTexDesc;
-		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
-		colorTex->Release();
-
-		float halfWidth = (float)colorTexDesc.Width *(cutter->right - cutter->left) / (float)colorTexDesc.Width / 2.0f;
-		float halfHeight = (float)colorTexDesc.Height *(cutter->bottom - cutter->top) / (float)colorTexDesc.Height / 2.0f;
-		VertexPos vertices[] =
 		{
-			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
-			{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
-			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
-			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
-			{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width,cutter->top / (float)colorTexDesc.Height) },
-			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
-		};
-		D3D11_BUFFER_DESC vertexDesc;
-		ZeroMemory(&vertexDesc, sizeof(vertexDesc));
-		vertexDesc.Usage = D3D11_USAGE_DEFAULT;
-		vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
 
-		D3D11_SUBRESOURCE_DATA resourceData;
-		ZeroMemory(&resourceData, sizeof(resourceData));
-		resourceData.pSysMem = vertices;
+			float halfWidth = (float)colorTexDesc.Width / 2.0f;
+			float halfHeight = (float)colorTexDesc.Height / 2.0f;
 
-		if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
-		{
-			MDLERROR("Failed to create vertex buffer!");
-			return false;
+
+			VertexPos vertices[] =
+			{
+				{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
+				{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(1.0f, 1.0f) },
+				{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
+				{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
+				{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(0.0f, 0.0f) },
+				{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
+			};
+			D3D11_BUFFER_DESC vertexDesc;
+			ZeroMemory(&vertexDesc, sizeof(vertexDesc));
+			vertexDesc.Usage = D3D11_USAGE_DEFAULT;
+			vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
+
+			D3D11_SUBRESOURCE_DATA resourceData;
+			ZeroMemory(&resourceData, sizeof(resourceData));
+			resourceData.pSysMem = vertices;
+
+
+			if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+			{
+				MDLERROR("Failed to create vertex buffer!");
+				return false;
+			}
 		}
-
-		D3D11_BUFFER_DESC constDesc;
-		ZeroMemory(&constDesc, sizeof(constDesc));
-		constDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		constDesc.ByteWidth = sizeof(XMMATRIX);
-		constDesc.Usage = D3D11_USAGE_DEFAULT;
-
-
-		if (FAILED(mcore->getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		else
 		{
-			return false;
+			float halfWidth = (float)colorTexDesc.Width *(cutter->right - cutter->left) / (float)colorTexDesc.Width / 2.0f;
+			float halfHeight = (float)colorTexDesc.Height *(cutter->bottom - cutter->top) / (float)colorTexDesc.Height / 2.0f;
+			VertexPos vertices[] =
+			{
+				{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
+				{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+				{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+				{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width, cutter->bottom / (float)colorTexDesc.Height) },
+				{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->left / (float)colorTexDesc.Width,cutter->top / (float)colorTexDesc.Height) },
+				{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(cutter->right / (float)colorTexDesc.Width, cutter->top / (float)colorTexDesc.Height) },
+			};
+			D3D11_BUFFER_DESC vertexDesc;
+			ZeroMemory(&vertexDesc, sizeof(vertexDesc));
+			vertexDesc.Usage = D3D11_USAGE_DEFAULT;
+			vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
+
+			D3D11_SUBRESOURCE_DATA resourceData;
+			ZeroMemory(&resourceData, sizeof(resourceData));
+			resourceData.pSysMem = vertices;
+			if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+			{
+				MDLERROR("Failed to create vertex buffer!");
+				return false;
+			}
 		}
-
-
-		XMMATRIX view = XMMatrixIdentity();
-		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore->getWidth(), 0.0f, (float)mcore->getHeight(), 0.1f, 100.0f);
-		vpMatrix_ = XMMatrixMultiply(view, projection);
-
-
-		QWORD spriteHandle = (static_cast<QWORD>(textureHandle) << 32) + mt();
-
-		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, &vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
-
-		return spriteHandle;
-	}
-
-	QWORD MDL::spriteHandler::loadSprite(DWORD textureHandle)
-	{
-
-		ID3D11Buffer* vertexBuffer_;
-		ID3D11Buffer* mvpCB_;
-		XMMATRIX vpMatrix_;
-		ID3D11Resource* colorTex;
-		auto mcore = core::getSingleton();
-		auto mt2dhan = texture2DHandler::getSingleton();
-
-		mt2dhan->getTextureColorMap(textureHandle)->GetResource(&colorTex);
-
-		D3D11_TEXTURE2D_DESC colorTexDesc;
-		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
-		colorTex->Release();
-
-
-		float halfWidth = (float)colorTexDesc.Width / 2.0f;
-		float halfHeight = (float)colorTexDesc.Height / 2.0f;
-
-
-		VertexPos vertices[] =
-		{
-			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
-			{ XMFLOAT3(halfWidth, -halfHeight, 1.0f), XMFLOAT2(1.0f, 1.0f) },
-			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
-			{ XMFLOAT3(-halfWidth, -halfHeight, 1.0f), XMFLOAT2(0.0f, 1.0f) },
-			{ XMFLOAT3(-halfWidth, halfHeight, 1.0f), XMFLOAT2(0.0f, 0.0f) },
-			{ XMFLOAT3(halfWidth, halfHeight, 1.0f), XMFLOAT2(1.0f, 0.0f) },
-		};
-		D3D11_BUFFER_DESC vertexDesc;
-		ZeroMemory(&vertexDesc, sizeof(vertexDesc));
-		vertexDesc.Usage = D3D11_USAGE_DEFAULT;
-		vertexDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		vertexDesc.ByteWidth = sizeof(VertexPos) * 6;
-
-		D3D11_SUBRESOURCE_DATA resourceData;
-		ZeroMemory(&resourceData, sizeof(resourceData));
-		resourceData.pSysMem = vertices;
-
-
-		if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
-		{
-			MDLERROR("Failed to create vertex buffer!");
-			return false;
-		}
-
-		D3D11_BUFFER_DESC constDesc;
-		ZeroMemory(&constDesc, sizeof(constDesc));
-		constDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		constDesc.ByteWidth = sizeof(XMMATRIX);
-		constDesc.Usage = D3D11_USAGE_DEFAULT;
-
-
-		if (FAILED(mcore->getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
-		{
-			return false;
-		}
-
-
-		XMMATRIX view = XMMatrixIdentity();
-		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore->getWidth(), 0.0f, (float)mcore->getHeight(), 0.1f, 100.0f);
-		vpMatrix_ = XMMatrixMultiply(view, projection);
-
-
-		QWORD spriteHandle = (static_cast<QWORD>(textureHandle) << 32) + mt();
 		
-		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, &vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
+		D3D11_BUFFER_DESC constDesc;
+		ZeroMemory(&constDesc, sizeof(constDesc));
+		constDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		constDesc.ByteWidth = sizeof(XMMATRIX);
+		constDesc.Usage = D3D11_USAGE_DEFAULT;
 
+
+		if (FAILED(mcore->getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		{
+			return false;
+		}
+
+
+		XMMATRIX view = XMMatrixIdentity();
+		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore->getWidth(), 0.0f, (float)mcore->getHeight(), 0.1f, 100.0f);
+		vpMatrix_ = XMMatrixMultiply(view, projection);
+
+
+		QWORD spriteHandle = (static_cast<QWORD>(textureHandle) << 32) + mt();
+
+		auto st = &data[spriteHandle];
+		st->set(textureHandle, vertexBuffer_, mvpCB_, &vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
 		return spriteHandle;
 	}
 
