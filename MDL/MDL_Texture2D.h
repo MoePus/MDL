@@ -21,9 +21,9 @@ namespace MDL
 	class texture2DHandler
 	{
 	public:
-		static texture2DHandler& getSingleton()
+		static texture2DHandler* getSingleton()
 		{
-			static texture2DHandler singleton;
+			static texture2DHandler* singleton = new texture2DHandler;
 			return singleton;
 		}
 		texture2DHandler();
@@ -81,14 +81,11 @@ namespace MDL
 
 	texture2D  texture2DHandler::getTexture(DWORD id)
 	{
-		if (data.find(id) != data.end())
+		if (data.find(id) == data.end())
 		{
-			return data[id];
+			MDLERROR("Error when get a texture");
 		}
-		else
-		{
-			return texture2D{ 0,0 };
-		}
+		return data[id];
 	}
 
 	inline ID3D11ShaderResourceView * texture2DHandler::getTextureColorMap(DWORD id)

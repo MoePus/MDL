@@ -8,9 +8,9 @@ namespace MDL
 	class composition
 	{
 	public:
-		static composition& getSingleton()
+		static composition* getSingleton()
 		{
-			static composition singleton;
+			static composition* singleton = new composition;
 			return singleton;
 		}
 

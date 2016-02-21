@@ -48,13 +48,15 @@ namespace MDL
 
 		XMFLOAT2 size;
 
-		sprite::sprite(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
-			ID3D11Buffer* _mvpCB, XMMATRIX _vpMatrix, XMFLOAT2 _size) :
-			textureHandle(_textureHandle), vertexBuffer(_vertexBuffer),
-			mvpCB(_mvpCB), vpMatrix(_vpMatrix), size(_size)
-		{
-		}
 	public:
+		sprite::sprite() {};
+		sprite::sprite(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
+			ID3D11Buffer* _mvpCB, XMMATRIX* _vpMatrix, XMFLOAT2 _size) :
+			textureHandle(_textureHandle), vertexBuffer(_vertexBuffer),
+			mvpCB(_mvpCB), size(_size)
+		{
+			memcpy(&vpMatrix, _vpMatrix, sizeof(XMMATRIX));
+		}
 		friend class spriteHandler;
 		friend class spriteRender;
 		static XMMATRIX GetWorldMatrix(spriteAttr attr)
@@ -71,9 +73,9 @@ namespace MDL
 	{
 	public:
 		friend class spriteRender;
-		static spriteHandler& getSingleton()
+		static spriteHandler* getSingleton()
 		{
-			static spriteHandler singleton;
+			static spriteHandler* singleton = new spriteHandler;
 			return singleton;
 		}
 		QWORD loadSprite(DWORD textureHandle, Rectf* cutter = nullptr);
@@ -86,7 +88,32 @@ namespace MDL
 		std::mt19937 mt;
 	};
 
-	void MDL::spriteRender::init()
+	class spriteRender
+	{
+	public:
+		static spriteRender* getSingleton()
+		{
+			static spriteRender* singleton = new spriteRender;
+			return singleton;
+		}
+		void init();
+
+		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
+		spriteAttr& getspriteAttr(DWORD renderHandle);
+		inline void clearRenderList();
+		void renderRenderList();
+		void renderRenderListAndClearIT();
+	private:
+		ID3D11VertexShader*	defaultVS;
+		ID3D11PixelShader*	defaultPS;
+		ID3D11InputLayout*	defaultInputLayout;
+
+		ID3D11SamplerState* colorMapSampler;
+
+		vector<pair<QWORD, spriteAttr>> data;
+	};
+
+	void spriteRender::init()
 	{
 		ID3DBlob* vsBuffer = 0;
 		string shaderName = "defaultSpriteFx";
@@ -98,7 +125,7 @@ namespace MDL
 
 		HRESULT d3dResult;
 		auto mcore = core::getSingleton();
-		auto d3dDevice = mcore.getDevice();
+		auto d3dDevice = mcore->getDevice();
 
 
 		d3dResult = d3dDevice->CreateVertexShader(vsBuffer->GetBufferPointer(),vsBuffer->GetBufferSize(), 0, &defaultVS);
@@ -164,7 +191,7 @@ namespace MDL
 		const static float oBECL[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 		d3dDevice->CreateBlendState(&blendDesc, &alphaBlendState_);
-		mcore.getContext()->OMSetBlendState(alphaBlendState_, oBECL, 0xFFFFFFFF);
+		mcore->getContext()->OMSetBlendState(alphaBlendState_, oBECL, 0xFFFFFFFF);
 		alphaBlendState_->Release();
 
 
@@ -214,7 +241,7 @@ namespace MDL
 		unsigned int offset = 0;
 		DWORD size = data.size();
 		auto mcore = core::getSingleton();
-		auto d3dContext = mcore.getContext();
+		auto d3dContext = mcore->getContext();
 
 		d3dContext->IASetInputLayout(defaultInputLayout);
 		d3dContext->VSSetShader(defaultVS, 0, 0);
@@ -224,12 +251,12 @@ namespace MDL
 
 		for (DWORD i = 0; i < size; i++)
 		{
-
-			sprite* st = &spriteHandler::getSingleton().data[data[i].first];
+			
+			sprite* st = &spriteHandler::getSingleton()->data[data[i].first];
 
 			d3dContext->IASetVertexBuffers(0, 1, &st->vertexBuffer, &stride, &offset);
 
-			auto colorMap = texture2DHandler::getSingleton().getTextureColorMap(st->textureHandle);
+			auto colorMap = texture2DHandler::getSingleton()->getTextureColorMap(st->textureHandle);
 			d3dContext->PSSetShaderResources(0, 1, &colorMap);
 
 
@@ -266,7 +293,7 @@ namespace MDL
 		auto mcore = core::getSingleton();
 		auto mt2dhan = texture2DHandler::getSingleton();
 
-		mt2dhan.getTextureColorMap(textureHandle)->GetResource(&colorTex);
+		mt2dhan->getTextureColorMap(textureHandle)->GetResource(&colorTex);
 
 		D3D11_TEXTURE2D_DESC colorTexDesc;
 		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
@@ -293,7 +320,7 @@ namespace MDL
 		ZeroMemory(&resourceData, sizeof(resourceData));
 		resourceData.pSysMem = vertices;
 
-		if (FAILED(mcore.getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+		if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
 		{
 			MDLERROR("Failed to create vertex buffer!");
 			return false;
@@ -306,20 +333,20 @@ namespace MDL
 		constDesc.Usage = D3D11_USAGE_DEFAULT;
 
 
-		if (FAILED(mcore.getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		if (FAILED(mcore->getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
 		{
 			return false;
 		}
 
 
 		XMMATRIX view = XMMatrixIdentity();
-		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore.getWidth(), 0.0f, (float)mcore.getHeight(), 0.1f, 100.0f);
+		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore->getWidth(), 0.0f, (float)mcore->getHeight(), 0.1f, 100.0f);
 		vpMatrix_ = XMMatrixMultiply(view, projection);
 
 
-		QWORD spriteHandle = static_cast<QWORD>(textureHandle) << 32 + mt();
+		QWORD spriteHandle = (static_cast<QWORD>(textureHandle) << 32) + mt();
 
-		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
+		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, &vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
 
 		return spriteHandle;
 	}
@@ -334,7 +361,7 @@ namespace MDL
 		auto mcore = core::getSingleton();
 		auto mt2dhan = texture2DHandler::getSingleton();
 
-		mt2dhan.getTextureColorMap(textureHandle)->GetResource(&colorTex);
+		mt2dhan->getTextureColorMap(textureHandle)->GetResource(&colorTex);
 
 		D3D11_TEXTURE2D_DESC colorTexDesc;
 		((ID3D11Texture2D*)colorTex)->GetDesc(&colorTexDesc);
@@ -365,7 +392,7 @@ namespace MDL
 		resourceData.pSysMem = vertices;
 
 
-		if (FAILED(mcore.getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
+		if (FAILED(mcore->getDevice()->CreateBuffer(&vertexDesc, &resourceData, &vertexBuffer_)))
 		{
 			MDLERROR("Failed to create vertex buffer!");
 			return false;
@@ -378,20 +405,20 @@ namespace MDL
 		constDesc.Usage = D3D11_USAGE_DEFAULT;
 
 
-		if (FAILED(mcore.getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
+		if (FAILED(mcore->getDevice()->CreateBuffer(&constDesc, 0, &mvpCB_)))
 		{
 			return false;
 		}
 
 
 		XMMATRIX view = XMMatrixIdentity();
-		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore.getWidth(), 0.0f, (float)mcore.getHeight(), 0.1f, 100.0f);
+		XMMATRIX projection = XMMatrixOrthographicOffCenterLH(0.0f, (float)mcore->getWidth(), 0.0f, (float)mcore->getHeight(), 0.1f, 100.0f);
 		vpMatrix_ = XMMatrixMultiply(view, projection);
 
 
-		QWORD spriteHandle = static_cast<QWORD>(textureHandle) << 32 + mt();
+		QWORD spriteHandle = (static_cast<QWORD>(textureHandle) << 32) + mt();
 		
-		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
+		data[spriteHandle] = sprite(textureHandle, vertexBuffer_, mvpCB_, &vpMatrix_, { (float)colorTexDesc.Width, (float)colorTexDesc.Height });
 
 		return spriteHandle;
 	}
@@ -408,28 +435,5 @@ namespace MDL
 		data.erase(spriteHandle);
 	}
 
-	class spriteRender
-	{
-	public:
-		static spriteRender& getSingleton()
-		{
-			static spriteRender singleton;
-			return singleton;
-		}
-		void init();
 
-		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
-		spriteAttr& getspriteAttr(DWORD renderHandle);
-		inline void clearRenderList();
-		void renderRenderList();
-		void renderRenderListAndClearIT();
-	private:
-		ID3D11VertexShader*	defaultVS;
-		ID3D11PixelShader*	defaultPS;
-		ID3D11InputLayout*	defaultInputLayout;
-
-		ID3D11SamplerState* colorMapSampler;
-
-		vector<pair<QWORD, spriteAttr>> data;
-	};
 }

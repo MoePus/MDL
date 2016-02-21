@@ -7,11 +7,17 @@ RE					2016@MoePus
 #include <dxgi.h>
 #include <iostream>
 #include <string>
+#include <mutex>
 #include <d3dcommon.h>
 #include <d3d11.h>
 #include <d3dx11.h>
 #include <xnamath.h>
 #include "MDL_STPK.h"
+
+#pragma comment ( lib, "D3D11.lib")
+#pragma comment ( lib, "DXGI.lib")
+#pragma comment ( lib, "d3dcompiler.lib")
+#pragma comment ( lib, "D3Dx11.lib")
 
 namespace MDL
 {
@@ -31,18 +37,19 @@ namespace MDL
 		OutputDebugString(_msg_.c_str());
 		std::terminate();
 	}
-
 	class core
 	{
+
 	public:
-		static core& getSingleton()
+		
+		static core* getSingleton()
 		{
-			static core singleton;
+			static core* singleton = new core;
 			return singleton;
 		}
 		core();
 		~core();
-		HWND CreateMDLWindow(HINSTANCE hInstance, char* windowname, char* classname, int _width, int _height, WNDPROC WndProc);
+		HWND CreateMDLWindow(HINSTANCE hInstance, char* windowname, char* classname, int _width, int _height, WNDPROC WndProc = coreDefaultWndProc);
 		BOOL ShowMDLWindow(int nCmdShow);
 
 		HRESULT InitDevice(int fpsNum, int fpsDen = 1);
@@ -77,7 +84,7 @@ namespace MDL
 		int			width;
 		int			height;
 
-		D3D_DRIVER_TYPE         driverType;
+		const D3D_DRIVER_TYPE   driverType = D3D_DRIVER_TYPE_HARDWARE;
 		ID3D11Device*           d3dDevice;
 		ID3D11DeviceContext*    ImmediateContext;
 		IDXGISwapChain*         SwapChain;
@@ -90,6 +97,29 @@ namespace MDL
 			if (SwapChain) SwapChain->Release();
 			if (ImmediateContext) ImmediateContext->Release();
 			if (d3dDevice) d3dDevice->Release();
+		}
+
+		static LRESULT CALLBACK coreDefaultWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+		{
+			PAINTSTRUCT ps;
+			HDC hdc;
+
+			switch (message)
+			{
+			case WM_PAINT:
+				hdc = BeginPaint(hWnd, &ps);
+				EndPaint(hWnd, &ps);
+				break;
+
+			case WM_DESTROY:
+				PostQuitMessage(0);
+				break;
+
+			default:
+				return DefWindowProc(hWnd, message, wParam, lParam);
+			}
+
+			return 0;
 		}
 	};
 
@@ -160,7 +190,7 @@ namespace MDL
 		sd.SampleDesc.Quality = 0;
 		sd.Windowed = TRUE;
 
-
+		
 		hr = D3D11CreateDeviceAndSwapChain(NULL, driverType, NULL, createDeviceFlags, &featureLevel, 1,
 				D3D11_SDK_VERSION, &sd, &SwapChain, &d3dDevice, NULL, &ImmediateContext);
 
