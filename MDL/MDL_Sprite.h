@@ -48,8 +48,6 @@ namespace MDL
 
 		XMFLOAT2 size;
 
-		spriteAttr attr;
-
 		sprite::sprite(DWORD _textureHandle, ID3D11Buffer* _vertexBuffer,
 			ID3D11Buffer* _mvpCB, XMMATRIX _vpMatrix, XMFLOAT2 _size) :
 			textureHandle(_textureHandle), vertexBuffer(_vertexBuffer),
@@ -59,7 +57,7 @@ namespace MDL
 	public:
 		friend class spriteHandler;
 		friend class spriteRender;
-		XMMATRIX GetWorldMatrix()
+		static XMMATRIX GetWorldMatrix(spriteAttr attr)
 		{
 			XMMATRIX _translation = XMMatrixTranslation(attr.position.x, attr.position.y, 0.0f);
 			XMMATRIX _rotationZ = XMMatrixRotationZ(attr.rotation);
@@ -72,6 +70,7 @@ namespace MDL
 	class spriteHandler
 	{
 	public:
+		friend class spriteRender;
 		static spriteHandler& getSingleton()
 		{
 			static spriteHandler singleton;
@@ -191,6 +190,69 @@ namespace MDL
 
 		return;
 	}
+
+	DWORD spriteRender::add2RenderList(QWORD spriteHandle, spriteAttr attrs)//NOT thread safe
+	{
+		DWORD handle = data.size();
+		data.push_back(make_pair(spriteHandle, attrs));
+		return handle;
+	}
+
+	spriteAttr & spriteRender::getspriteAttr(DWORD renderHandle)
+	{
+		return data[renderHandle].second;
+	}
+
+	inline void spriteRender::clearRenderList()
+	{
+		data.clear();
+	}
+
+	void spriteRender::renderRenderList()
+	{
+		unsigned int stride = sizeof(VertexPos);
+		unsigned int offset = 0;
+		DWORD size = data.size();
+		auto mcore = core::getSingleton();
+		auto d3dContext = mcore.getContext();
+
+		d3dContext->IASetInputLayout(defaultInputLayout);
+		d3dContext->VSSetShader(defaultVS, 0, 0);
+		d3dContext->PSSetShader(defaultPS, 0, 0);
+		d3dContext->PSSetSamplers(0, 1, &colorMapSampler);
+		d3dContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		for (DWORD i = 0; i < size; i++)
+		{
+
+			sprite* st = &spriteHandler::getSingleton().data[data[i].first];
+
+			d3dContext->IASetVertexBuffers(0, 1, &st->vertexBuffer, &stride, &offset);
+
+			auto colorMap = texture2DHandler::getSingleton().getTextureColorMap(st->textureHandle);
+			d3dContext->PSSetShaderResources(0, 1, &colorMap);
+
+
+			XMMATRIX world = sprite::GetWorldMatrix(data[i].second);
+			XMMATRIX vpMatrix;
+			memcpy(&vpMatrix, &st->vpMatrix, sizeof(vpMatrix));
+			XMMATRIX mvp = XMMatrixMultiply(world, vpMatrix);
+			mvp = XMMatrixTranspose(mvp);
+
+			d3dContext->UpdateSubresource(st->mvpCB, 0, 0, &mvp, 0, 0);
+			d3dContext->VSSetConstantBuffers(0, 1, &st->mvpCB);
+			d3dContext->Draw(6, 0);
+
+		}
+	}
+
+	inline void spriteRender::renderRenderListAndClearIT()
+	{
+		renderRenderList();
+		clearRenderList();
+	}
+
+
 
 	QWORD MDL::spriteHandler::loadSprite(DWORD textureHandle, Rectf * cutter)
 	{
@@ -355,11 +417,19 @@ namespace MDL
 			return singleton;
 		}
 		void init();
+
+		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
+		spriteAttr& getspriteAttr(DWORD renderHandle);
+		inline void clearRenderList();
+		void renderRenderList();
+		void renderRenderListAndClearIT();
 	private:
 		ID3D11VertexShader*	defaultVS;
 		ID3D11PixelShader*	defaultPS;
 		ID3D11InputLayout*	defaultInputLayout;
 
 		ID3D11SamplerState* colorMapSampler;
+
+		vector<pair<QWORD, spriteAttr>> data;
 	};
 }

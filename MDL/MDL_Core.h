@@ -45,7 +45,7 @@ namespace MDL
 		HWND CreateMDLWindow(HINSTANCE hInstance, char* windowname, char* classname, int _width, int _height, WNDPROC WndProc);
 		BOOL ShowMDLWindow(int nCmdShow);
 
-		HRESULT InitDevice();
+		HRESULT InitDevice(int fpsNum, int fpsDen = 1);
 		ID3D11Device* getDevice()
 		{
 			return d3dDevice;
@@ -55,6 +55,14 @@ namespace MDL
 			return ImmediateContext;
 		}
 		void clearComposition();
+		void RenderPresentSync()
+		{
+			SwapChain->Present(1, 0);
+		}
+		void RenderPresent()
+		{
+			SwapChain->Present(0, 0);
+		}
 
 		typedef STPK::stpkHandler::STPK_ret MDL_FILE;
 		MDL_FILE&& getFile(string fileName);
@@ -132,7 +140,7 @@ namespace MDL
 	{
 		return ShowWindow(hWnd, nCmdShow);
 	}
-	HRESULT core::InitDevice()
+	HRESULT core::InitDevice(int fpsNum,int fpsDen)
 	{
 		HRESULT hr;
 
@@ -144,8 +152,8 @@ namespace MDL
 		sd.BufferDesc.Width = width;
 		sd.BufferDesc.Height = height;
 		sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		sd.BufferDesc.RefreshRate.Numerator = 60;
-		sd.BufferDesc.RefreshRate.Denominator = 1;
+		sd.BufferDesc.RefreshRate.Numerator = fpsNum;
+		sd.BufferDesc.RefreshRate.Denominator = fpsDen;
 		sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 		sd.OutputWindow = hWnd;
 		sd.SampleDesc.Count = 1;
