@@ -33,7 +33,7 @@ namespace MDL
 		void clearComposition()
 		{
 			auto mcore = core::getSingleton();
-			float ClearColor[4] = { 1.0f, 0.0f, 0.0f, 0.5f }; //red,green,blue,alpha
+			float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f }; //red,green,blue,alpha
 			mcore->getContext()->ClearRenderTargetView(compTargetView, ClearColor);
 		}
 		void doRender();
