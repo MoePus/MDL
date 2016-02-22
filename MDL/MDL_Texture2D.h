@@ -29,6 +29,7 @@ namespace MDL
 		texture2DHandler();
 		~texture2DHandler();
 
+		void appendTexture(DWORD textureHandle, texture2D texture);
 		DWORD loadTexture(string fileName);
 		void unloadTexture(DWORD textureHandle);
 
@@ -46,17 +47,24 @@ namespace MDL
 	{
 	}
 
+	void texture2DHandler::appendTexture(DWORD textureHandle, texture2D texture)
+	{
+		data[textureHandle] = texture;
+	}
+
 	DWORD texture2DHandler::loadTexture(string fileName)
 	{
-		DWORD texture_handle = SpecialFNVHash(fileName.c_str(), fileName.c_str() + fileName.length(), NULL);
+		DWORD textureHandle = SpecialFNVHash(fileName.c_str(), fileName.c_str() + fileName.length(), NULL);
 		HRESULT d3dResult;
 		ID3D11ShaderResourceView* colorMap_;
 
 		auto mcore = core::getSingleton();
 
 
-		auto tbM = mcore->getFile(texture_handle);
-		d3dResult = D3DX11CreateShaderResourceViewFromMemory(mcore->getDevice(), tbM.mem, tbM.SIZE, 0, 0, &colorMap_, 0);
+		auto tbM = mcore->getFile(textureHandle);
+		D3DX11_IMAGE_LOAD_INFO textureInfoDesc;
+		textureInfoDesc.MipLevels = 1;
+		d3dResult = D3DX11CreateShaderResourceViewFromMemory(mcore->getDevice(), tbM.mem, tbM.SIZE, &textureInfoDesc, 0, &colorMap_, 0);
 
 		free(tbM.mem);
 
@@ -67,10 +75,10 @@ namespace MDL
 		}
 
 
-		data[texture_handle].colorMap = colorMap_;
+		data[textureHandle].colorMap = colorMap_;
 
 
-		return texture_handle;
+		return textureHandle;
 	}
 
 	void texture2DHandler::unloadTexture(DWORD textureHandle)
