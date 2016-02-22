@@ -24,6 +24,7 @@ namespace MDL
 		ID3D11RenderTargetView*		oldTargetView;
 
 		bool init();
+		bool bindeColorMap();
 	public:
 		composition::composition(funtype _renderFunc, std::string compName);
 		//composition::composition() {};   //CanT
@@ -50,7 +51,6 @@ namespace MDL
 	bool composition<funtype>::init()
 	{
 		D3D11_TEXTURE2D_DESC textureDesc;
-		D3D11_SHADER_RESOURCE_VIEW_DESC colorMapDesc;
 		auto mcore = core::getSingleton();
 		ZeroMemory(&textureDesc, sizeof(textureDesc));
 
@@ -79,18 +79,24 @@ namespace MDL
 			return false;
 		}
 
+		return bindeColorMap();
+	}
 
-		colorMapDesc.Format = textureDesc.Format;
+	template<typename funtype>
+	inline bool composition<funtype>::bindeColorMap()
+	{
+		auto mcore = core::getSingleton();
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC colorMapDesc;
+		colorMapDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		colorMapDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		colorMapDesc.Texture2D.MostDetailedMip = 0;
 		colorMapDesc.Texture2D.MipLevels = 1;
 
-		/*						Init colorMap for this comp					 */
 		if (FAILED(mcore->getDevice()->CreateShaderResourceView(compTexture, &colorMapDesc, &colorMap)))
 		{
 			return false;
 		}
-
 		return true;
 	}
 
@@ -131,6 +137,8 @@ namespace MDL
 	template<typename funtype>
 	inline void composition<funtype>::doRender()
 	{
+		if (!colorMap)
+			bindeColorMap();
 		renderFunc();
 	}
 
