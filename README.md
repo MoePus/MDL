@@ -11,6 +11,6 @@ with dx11
 
 ##aim of 2016.2.20
 * Implement the sprite render list module √
-* Make less drawcall when drawing with the same colorMap
 * Implement the composition module √
+* Make less drawcall when drawing with the same colorMap
 * Implement the point drawer module

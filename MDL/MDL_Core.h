@@ -46,8 +46,8 @@ namespace MDL
 		
 		static core* getSingleton()
 		{
-			static core* singleton = new core;
-			return singleton;
+			static core singleton;
+			return &singleton;
 		}
 		core();
 		~core();
@@ -175,8 +175,6 @@ namespace MDL
 	}
 	HRESULT core::InitDevice(int fpsNum,int fpsDen)
 	{
-		HRESULT hr;
-
 		UINT createDeviceFlags = 0;
 		D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
 		DXGI_SWAP_CHAIN_DESC sd;
@@ -193,27 +191,23 @@ namespace MDL
 		sd.SampleDesc.Quality = 0;
 		sd.Windowed = TRUE;
 
-		
-		hr = D3D11CreateDeviceAndSwapChain(NULL, driverType, NULL, createDeviceFlags, &featureLevel, 1,
-				D3D11_SDK_VERSION, &sd, &SwapChain, &d3dDevice, NULL, &ImmediateContext);
 
-		if (FAILED(hr))
-			return hr;
+		if (FAILED(D3D11CreateDeviceAndSwapChain(NULL, driverType, NULL, createDeviceFlags, &featureLevel, 1,
+			D3D11_SDK_VERSION, &sd, &SwapChain, &d3dDevice, NULL, &ImmediateContext)))
+			MDLERROR("Failed create Device");
 
 		ID3D11Texture2D* pBackBuffer = NULL;
-		hr = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
-		if (FAILED(hr))
-			return hr;
+		if (FAILED(SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer)))
+			MDLERROR("Failed get backBuffer");
 
-		hr = d3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &RenderTargetView);
-
+		const auto hr = d3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &RenderTargetView);
 		pBackBuffer->Release();
 		if (FAILED(hr))
-			return hr;
+			MDLERROR("Failed create RenderTargetView");
 
 		ImmediateContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
 
-		// Setup the viewport
+		/*					Setup the viewport				*/
 		D3D11_VIEWPORT vp;
 		vp.Width = (FLOAT)width;
 		vp.Height = (FLOAT)height;
@@ -307,7 +301,7 @@ namespace MDL
 		shaderFlags |= D3DCOMPILE_DEBUG;
 		#endif
 
-		ID3DBlob* errorBuffer = 0;
+		ID3DBlob* errorBuffer = nullptr;
 		HRESULT result;
 
 		result = D3DX11CompileFromMemory(mem, len, fxPath.c_str(), 0, 0, entry, shaderModel,
@@ -315,7 +309,7 @@ namespace MDL
 
 		if (FAILED(result))
 		{
-			if (errorBuffer != 0)
+			if (errorBuffer)
 			{
 				OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
 				errorBuffer->Release();
@@ -324,7 +318,7 @@ namespace MDL
 			return false;
 		}
 
-		if (errorBuffer != 0)
+		if (errorBuffer)
 			errorBuffer->Release();
 
 		return true;

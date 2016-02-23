@@ -17,8 +17,8 @@ namespace STPK
 	public:
 		static stpkHandler* getSingleton()
 		{
-			static stpkHandler* singleton = new stpkHandler;
-			return singleton;
+			static stpkHandler singleton;
+			return &singleton;
 		}
 		stpkHandler();
 		~stpkHandler();

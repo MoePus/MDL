@@ -23,8 +23,8 @@ namespace MDL
 	public:
 		static texture2DHandler* getSingleton()
 		{
-			static texture2DHandler* singleton = new texture2DHandler;
-			return singleton;
+			static texture2DHandler singleton;
+			return &singleton;
 		}
 		texture2DHandler();
 		~texture2DHandler();
@@ -55,28 +55,21 @@ namespace MDL
 	DWORD texture2DHandler::loadTexture(string fileName)
 	{
 		DWORD textureHandle = SpecialFNVHash(fileName.c_str(), fileName.c_str() + fileName.length(), NULL);
-		HRESULT d3dResult;
 		ID3D11ShaderResourceView* colorMap_;
-
 		auto mcore = core::getSingleton();
 
 
 		auto tbM = mcore->getFile(textureHandle);
 		D3DX11_IMAGE_LOAD_INFO textureInfoDesc;
 		textureInfoDesc.MipLevels = 1;
-		d3dResult = D3DX11CreateShaderResourceViewFromMemory(mcore->getDevice(), tbM.mem, tbM.SIZE, &textureInfoDesc, 0, &colorMap_, 0);
+		const auto hr = D3DX11CreateShaderResourceViewFromMemory(mcore->getDevice(), tbM.mem, tbM.SIZE, &textureInfoDesc, 0, &colorMap_, 0);
 
 		free(tbM.mem);
 
-		if (FAILED(d3dResult))
-		{
-			MDLERROR("Failed to load the texture image!");
-			return false;
-		}
-
+		if (FAILED(hr))
+			MDLERROR("Failed to load the texture");
 
 		data[textureHandle].colorMap = colorMap_;
-
 
 		return textureHandle;
 	}
@@ -92,7 +85,7 @@ namespace MDL
 	{
 		if (data.find(id) == data.end())
 		{
-			MDLERROR("Error when get a texture");
+			MDLERROR("Failed to find the texture");
 		}
 		return data[id];
 	}

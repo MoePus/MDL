@@ -86,8 +86,8 @@ namespace MDL
 		friend class spriteRender;
 		static spriteHandler* getSingleton()
 		{
-			static spriteHandler* singleton = new spriteHandler;
-			return singleton;
+			static spriteHandler singleton;
+			return &singleton;
 		}
 		QWORD loadSprite(DWORD textureHandle, Rectf* cutter = nullptr);
 		void unloadSprite(QWORD spriteHandle);
@@ -115,11 +115,23 @@ namespace MDL
 			init();
 		}
 
+		spriteRender::~spriteRender()
+		{
+			if (defaultVS)
+				defaultVS->Release();
+			if (defaultPS)
+				defaultPS->Release();
+			if (defaultInputLayout)
+				defaultInputLayout->Release();
+			if (colorMapSampler)
+				colorMapSampler->Release();
+		}
+
 		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
 		spriteAttr& getspriteAttr(DWORD renderHandle);
 		inline void clearRenderList();
-		void renderRenderList();
-		void renderRenderListAndClearIT();
+		void doRender();
+		void autoRender();
 	private:
 		ID3D11VertexShader*	defaultVS;
 		ID3D11PixelShader*	defaultPS;
@@ -136,8 +148,7 @@ namespace MDL
 	{
 		ID3DBlob* vsBuffer = 0;
 		string shaderName = "defaultSpriteFx";
-		bool compileResult = CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "VS_Main", "vs_4_0", &vsBuffer);
-		if (compileResult == false)
+		if (!CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "VS_Main", "vs_4_0", &vsBuffer))
 		{
 			MDLERROR("Error compiling the vertex shader!");
 		}
@@ -176,9 +187,7 @@ namespace MDL
 		ID3DBlob* psBuffer = 0;
 
 
-		compileResult = CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "PS_Main", "ps_4_0", &psBuffer);
-
-		if (compileResult == false)
+		if (!CompileShader(defaultSpriteFx, strlen(defaultSpriteFx), shaderName, "PS_Main", "ps_4_0", &psBuffer))
 		{
 			MDLERROR("Error compiling pixel shader!");
 		}
@@ -218,7 +227,7 @@ namespace MDL
 
 	DWORD spriteRender::add2RenderList(QWORD spriteHandle, spriteAttr attrs)//NOT thread safe
 	{
-		DWORD handle = data.size();
+		DWORD handle = static_cast<DWORD>(data.size());
 		data.push_back(make_pair(spriteHandle, attrs));
 		return handle;
 	}
@@ -233,11 +242,11 @@ namespace MDL
 		data.clear();
 	}
 
-	void spriteRender::renderRenderList()
+	void spriteRender::doRender()
 	{
 		unsigned int stride = sizeof(VertexPos);
 		unsigned int offset = 0;
-		DWORD size = data.size();
+		auto size = data.size();
 		auto mcore = core::getSingleton();
 		auto d3dContext = mcore->getContext();
 
@@ -247,7 +256,7 @@ namespace MDL
 		d3dContext->PSSetSamplers(0, 1, &colorMapSampler);
 		d3dContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-		for (DWORD i = 0; i < size; i++)
+		for (auto i = 0; i < size; i++)
 		{
 			
 			sprite* st = &spriteHandler::getSingleton()->data[data[i].first];
@@ -270,9 +279,9 @@ namespace MDL
 		}
 	}
 
-	inline void spriteRender::renderRenderListAndClearIT()
+	inline void spriteRender::autoRender()
 	{
-		renderRenderList();
+		doRender();
 		clearRenderList();
 	}
 
