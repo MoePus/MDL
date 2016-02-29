@@ -9,6 +9,7 @@ RI				  2016@MoePus
 #include <vector>
 #include <xnamath.h>
 #include <random>
+#include <algorithm>
 #include "MDL_Core.h"
 #include "MDL_Texture2D.h"
 #include "MDL_Sprite_FX.h"
@@ -27,6 +28,7 @@ namespace MDL
 		XMFLOAT2 scale = { 1.0f,1.0f };
 		XMFLOAT2 position;
 		float rotation = 0.0f;
+		int layer;
 		MDL_SPRITE_OVERLAPP_MODE OM = Ori_Alpha;
 	};
 	struct Rectf
@@ -125,6 +127,13 @@ namespace MDL
 				defaultInputLayout->Release();
 			if (colorMapSampler)
 				colorMapSampler->Release();
+			/*if (depthStencilState)
+				depthStencilState->Release();
+
+			for (int i = 0; i < rasterizerStateNum; i++)
+			{
+				rsState[i]->Release();
+			}*/
 		}
 
 		DWORD add2RenderList(QWORD spriteHandle, spriteAttr attrs = spriteAttr());
@@ -138,6 +147,9 @@ namespace MDL
 		ID3D11InputLayout*	defaultInputLayout;
 
 		ID3D11SamplerState* colorMapSampler;
+		//ID3D11DepthStencilState* depthStencilState;
+		//const static int rasterizerStateNum = 8;
+		//ID3D11RasterizerState* rsState[rasterizerStateNum];
 
 		vector<pair<QWORD, spriteAttr>> data;
 
@@ -222,6 +234,46 @@ namespace MDL
 		}
 
 
+/*		D3D11_RASTERIZER_DESC rasterDesc;
+
+		rasterDesc.FillMode = D3D11_FILL_SOLID;
+		rasterDesc.CullMode = D3D11_CULL_BACK;
+		rasterDesc.DepthBiasClamp = 0.0f;
+		rasterDesc.ScissorEnable = false;
+		rasterDesc.DepthClipEnable = true;
+		rasterDesc.MultisampleEnable = false;
+		rasterDesc.SlopeScaledDepthBias = 0.0f;
+		rasterDesc.FrontCounterClockwise = false;
+		rasterDesc.AntialiasedLineEnable = false;
+
+		for (int i = 0; i < rasterizerStateNum; i++)
+		{
+			rasterDesc.DepthBias = i * 10;
+			d3dDevice->CreateRasterizerState(&rasterDesc, &rsState[i]);
+		}
+
+
+		D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
+		ZeroMemory(&depthStencilDesc, sizeof(depthStencilDesc));
+
+		depthStencilDesc.DepthEnable = true;
+		depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		depthStencilDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+
+		depthStencilDesc.StencilEnable = true;
+		depthStencilDesc.StencilReadMask = 0xFF;
+		depthStencilDesc.StencilWriteMask = 0xFF;
+
+		depthStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+		depthStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_GREATER_EQUAL;
+
+		depthStencilDesc.BackFace = depthStencilDesc.FrontFace;
+
+		d3dDevice->CreateDepthStencilState(&depthStencilDesc, &depthStencilState);*/
+		//The Layer module needs the depth texture if i use this.
+
 		return;
 	}
 
@@ -250,13 +302,19 @@ namespace MDL
 		auto mcore = core::getSingleton();
 		auto d3dContext = mcore->getContext();
 
+		
 		d3dContext->IASetInputLayout(defaultInputLayout);
 		d3dContext->VSSetShader(defaultVS, 0, 0);
 		d3dContext->PSSetShader(defaultPS, 0, 0);
 		d3dContext->PSSetSamplers(0, 1, &colorMapSampler);
 		d3dContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		std::sort(data.begin(), data.end(), [](const pair<QWORD, spriteAttr>& v1, const pair<QWORD, spriteAttr>& v2)
+		{
+			return v1.second.layer < v2.second.layer;
+		});
 
-		for (auto i = 0; i < size; i++)
+		//d3dContext->OMSetDepthStencilState(depthStencilState, 1);
+		for (int i = 0; i <size; ++i)
 		{
 			
 			sprite* st = &spriteHandler::getSingleton()->data[data[i].first];
@@ -266,7 +324,8 @@ namespace MDL
 			auto colorMap = texture2DHandler::getSingleton()->getTextureColorMap(st->textureHandle);
 			d3dContext->PSSetShaderResources(0, 1, &colorMap);
 
-
+			
+			//d3dContext->RSSetState(rsState[rasterizerStateNum - 1 - data[i].second.layer]);
 			XMMATRIX world = sprite::GetWorldMatrix(data[i].second);
 
 			XMMATRIX mvp = XMMatrixMultiply(world, *(st->vpMatrix));

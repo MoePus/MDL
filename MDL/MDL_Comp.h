@@ -21,7 +21,9 @@ namespace MDL
 		ID3D11RenderTargetView*		compTargetView;
 		ID3D11ShaderResourceView*	colorMap;
 
+
 		ID3D11RenderTargetView*		oldTargetView;
+		ID3D11DepthStencilView*		olddepthStencilView;
 
 		bool init();
 		bool bindeColorMap();
@@ -156,14 +158,14 @@ namespace MDL
 	inline void composition<funtype>::saveCurrentRenderTargetView()
 	{
 		auto mcore = core::getSingleton();
-		mcore->getContext()->OMGetRenderTargets(1, &oldTargetView, NULL);
+		mcore->getContext()->OMGetRenderTargets(1, &oldTargetView, &olddepthStencilView);
 	}
 
 	template<typename funtype>
 	inline void composition<funtype>::setRenderTargetViewBack()
 	{
 		auto mcore = core::getSingleton();
-		mcore->getContext()->OMSetRenderTargets(1, &oldTargetView, NULL);
+		mcore->getContext()->OMSetRenderTargets(1, &oldTargetView, olddepthStencilView);
 	}
 
 	template<typename funtype>

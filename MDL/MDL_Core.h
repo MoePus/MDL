@@ -91,10 +91,14 @@ namespace MDL
 		ID3D11Device*           d3dDevice;
 		ID3D11DeviceContext*    ImmediateContext;
 		IDXGISwapChain*         SwapChain;
+		ID3D11Texture2D*		depthStencilBuffer;
 		ID3D11RenderTargetView* RenderTargetView;
+		ID3D11DepthStencilView* depthStencilView;
 
 		void CleanupDevice()
 		{
+			if (depthStencilView) depthStencilView->Release();
+			if (depthStencilBuffer) depthStencilBuffer->Release();
 			if (ImmediateContext) ImmediateContext->ClearState();
 			if (RenderTargetView) RenderTargetView->Release();
 			if (SwapChain) SwapChain->Release();
@@ -177,35 +181,67 @@ namespace MDL
 	{
 		UINT createDeviceFlags = 0;
 		D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-		DXGI_SWAP_CHAIN_DESC sd;
-		ZeroMemory(&sd, sizeof(sd));
-		sd.BufferCount = 1;
-		sd.BufferDesc.Width = width;
-		sd.BufferDesc.Height = height;
-		sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		sd.BufferDesc.RefreshRate.Numerator = fpsNum;
-		sd.BufferDesc.RefreshRate.Denominator = fpsDen;
-		sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		sd.OutputWindow = hWnd;
-		sd.SampleDesc.Count = 1;
-		sd.SampleDesc.Quality = 0;
-		sd.Windowed = TRUE;
+		DXGI_SWAP_CHAIN_DESC swapChainDesc;
+		//D3D11_TEXTURE2D_DESC depthBufferDesc;
+		//D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
+		depthStencilView = nullptr;
+
+		ZeroMemory(&swapChainDesc, sizeof(DXGI_SWAP_CHAIN_DESC));
+		swapChainDesc.BufferCount = 1;
+		swapChainDesc.BufferDesc.Width = width;
+		swapChainDesc.BufferDesc.Height = height;
+		swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		swapChainDesc.BufferDesc.RefreshRate.Numerator = fpsNum;
+		swapChainDesc.BufferDesc.RefreshRate.Denominator = fpsDen;
+		swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		swapChainDesc.OutputWindow = hWnd;
+		swapChainDesc.SampleDesc.Count = 1;
+		swapChainDesc.SampleDesc.Quality = 0;
+		swapChainDesc.Windowed = TRUE;
 
 
 		if (FAILED(D3D11CreateDeviceAndSwapChain(NULL, driverType, NULL, createDeviceFlags, &featureLevel, 1,
-			D3D11_SDK_VERSION, &sd, &SwapChain, &d3dDevice, NULL, &ImmediateContext)))
+			D3D11_SDK_VERSION, &swapChainDesc, &SwapChain, &d3dDevice, NULL, &ImmediateContext)))
 			MDLERROR("Failed create Device");
 
 		ID3D11Texture2D* pBackBuffer = NULL;
 		if (FAILED(SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer)))
 			MDLERROR("Failed get backBuffer");
 
+
+		/*				Setup the depthBuffer				*///But not now
+/*		depthBufferDesc.Width = width;
+		depthBufferDesc.Height = height;
+		depthBufferDesc.MipLevels = 1;
+		depthBufferDesc.ArraySize = 1;
+		depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		depthBufferDesc.SampleDesc.Count = 1;
+		depthBufferDesc.SampleDesc.Quality = 0;
+		depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		depthBufferDesc.CPUAccessFlags = 0;
+		depthBufferDesc.MiscFlags = 0;
+		if (FAILED(d3dDevice->CreateTexture2D(&depthBufferDesc, NULL, &depthStencilBuffer)))
+			MDLERROR("Failed create depthStencilBuffer");
+
+
+
+
+		ZeroMemory(&depthStencilViewDesc, sizeof(D3D11_DEPTH_STENCIL_VIEW_DESC));
+		depthStencilViewDesc.Format = depthBufferDesc.Format;
+		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		depthStencilViewDesc.Texture2D.MipSlice = 0;
+		if (FAILED(d3dDevice->CreateDepthStencilView(depthStencilBuffer,&depthStencilViewDesc,&depthStencilView)))
+			MDLERROR("Failed create depthStencilView");*/
+
+
+
 		const auto hr = d3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &RenderTargetView);
 		pBackBuffer->Release();
 		if (FAILED(hr))
 			MDLERROR("Failed create RenderTargetView");
 
-		ImmediateContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
+		ImmediateContext->OMSetRenderTargets(1, &RenderTargetView, depthStencilView);
 
 		/*					Setup the viewport				*/
 		D3D11_VIEWPORT vp;
@@ -223,6 +259,7 @@ namespace MDL
 		D3D11_BLEND_DESC blendDesc;
 		ZeroMemory(&blendDesc, sizeof(blendDesc));
 
+		//blendDesc.AlphaToCoverageEnable = true;
 		blendDesc.RenderTarget[0].BlendEnable = TRUE;
 		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
 		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
@@ -255,6 +292,7 @@ namespace MDL
 	{
 		float ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; //red,green,blue,alpha
 		ImmediateContext->ClearRenderTargetView(RenderTargetView, ClearColor);
+		//ImmediateContext->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 	}
 
 	inline core::MDL_FILE core::getFile(string fileName)
